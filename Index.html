@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One Click Sticker v1.04 - AI 貼圖生成器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        /* 使用 Inter 字體 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+        }
+
+        /* 自訂樣式 */
+        .step-card {
+            background-color: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 1rem;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        /* 檔案上傳區域 */
+        #drop-zone {
+            border: 2px dashed #4b5563;
+            color: #9ca3af;
+        }
+        #drop-zone.dragover {
+            border-color: #3b82f6;
+            background-color: #374151;
+        }
+        
+        /* 選項 Radio/Checkbox */
+        .option-radio:checked + label {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+        }
+        .emotion-checkbox:checked + label {
+            border-color: #3b82f6;
+            background-color: #2563eb;
+            color: white;
+        }
+        .emotion-checkbox:checked + label svg {
+            stroke: white;
+        }
+
+        /* 貼圖卡片 */
+        .sticker-card {
+            background-color: #374151;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            aspect-ratio: 1 / 1;
+        }
+
+        /* 骨架載入動畫 */
+        .skeleton {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            50% {
+                opacity: .5;
+            }
+        }
+        
+        /* 相機 Modal & Message Modal */
+        .modal-overlay {
+            background-color: rgba(0,0,0,0.7);
+        }
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <div class="min-h-screen w-full p-4 sm:p-6 lg:p-8">
+        <main class="max-w-7xl mx-auto">
+            <!-- 標題 -->
+            <header class="text-center mb-10">
+                <h1 class="text-4xl sm:text-5xl font-bold tracking-tight text-white">
+                    One Click Sticker <span class="text-base align-top bg-blue-600 text-white px-2 py-1 rounded-full">v1.04</span>
+                </h1>
+                <p class="mt-3 text-lg text-gray-400 max-w-2xl mx-auto">
+                    上傳您的照片，選擇喜愛的風格，一鍵生成 AI 聊天貼圖。
+                </p>
+            </header>
+
+            <!-- 主要設定區域 (左右) -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                <!-- 左邊：您的照片 -->
+                <section class="step-card h-full">
+                    <h2 class="text-2xl font-bold mb-6 flex items-center">
+                        <span class="bg-blue-600 text-white rounded-full h-8 w-8 flex items-center justify-center mr-3 font-bold">1</span>
+                        您的照片
+                    </h2>
+                    <div class="grid grid-cols-1 gap-8 items-center">
+                        <div id="upload-container">
+                            <div id="drop-zone" class="relative w-full h-64 rounded-lg flex flex-col justify-center items-center text-center p-4 cursor-pointer hover:bg-gray-700 transition-colors">
+                                <input type="file" id="file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/png, image/jpeg, image/webp">
+                                <i data-lucide="upload-cloud" class="w-16 h-16 text-gray-500 mb-4"></i>
+                                <p class="font-semibold">點擊此處上傳，或將檔案拖曳至此</p>
+                                <p class="text-sm text-gray-500 mt-1">支援 PNG, JPG, WEBP (建議使用臉部清晰的照片)</p>
+                            </div>
+                            <button id="camera-button" class="mt-4 w-full bg-gray-600 hover:bg-gray-500 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center transition-colors">
+                                <i data-lucide="camera" class="w-5 h-5 mr-2"></i>
+                                使用相機拍攝
+                            </button>
+                        </div>
+                        <div id="image-preview-container" class="relative w-full h-64 bg-gray-800 rounded-lg flex items-center justify-center hidden">
+                            <img id="image-preview" src="" alt="圖片預覽" class="max-w-full max-h-full rounded-md object-contain">
+                            <button id="clear-image-btn" class="absolute top-2 right-2 bg-gray-700 hover:bg-red-600 p-2 rounded-full transition-colors">
+                                <i data-lucide="x" class="w-5 h-5 text-gray-300"></i>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 右邊：選擇貼圖樣式 -->
+                <section class="step-card h-full">
+                    <h2 class="text-2xl font-bold mb-6 flex items-center">
+                        <span class="bg-blue-600 text-white rounded-full h-8 w-8 flex items-center justify-center mr-3 font-bold">2</span>
+                        選擇貼圖樣式
+                    </h2>
+                    <div class="space-y-8">
+                        <div>
+                            <label class="text-lg font-semibold">藝術風格</label>
+                            <p class="text-sm text-gray-400 mb-4">選擇您喜愛的貼圖藝術風格。</p>
+                            <div id="styles-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                <!-- 風格選項將由 JS 動態生成 -->
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-lg font-semibold">情緒</label>
+                            <p class="text-sm text-gray-400 mb-4">選擇您想生成的情緒貼圖（預設全選）。</p>
+                            <div id="emotions-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                <!-- 情緒選項將由 JS 動態生成 -->
+                            </div>
+                            <div class="mt-4 flex space-x-3">
+                                <button id="select-all-btn" class="text-sm bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded-md">全選</button>
+                                <button id="deselect-all-btn" class="text-sm bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded-md">取消全選</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-lg font-semibold flex items-center cursor-pointer">
+                                <span class="mr-3">加上文字</span>
+                                <div class="relative">
+                                    <input type="checkbox" id="add-text-toggle" class="sr-only peer">
+                                    <div class="w-14 h-8 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 transition-colors"></div>
+                                    <div class="absolute left-1 top-1 w-6 h-6 bg-white rounded-full transition-transform peer-checked:translate-x-6"></div>
+                                </div>
+                            </label>
+                            <p class="text-sm text-gray-400 mt-2">AI 會自動為您的貼圖加上有趣的英文 Meme 文字。</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- 生成按鈕 -->
+            <div class="text-center mb-12">
+                <button id="generate-btn" class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold text-xl py-4 px-10 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg">
+                    <span id="btn-text">生成貼圖</span>
+                    <div id="btn-loader" class="hidden w-6 h-6 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
+                </button>
+            </div>
+
+            <!-- 下方：貼圖生成區 -->
+            <section id="results-section" class="hidden">
+                   <h2 class="text-3xl font-bold text-center mb-6">貼圖生成區</h2>
+                <div class="bg-gray-800 p-4 sm:p-6 rounded-2xl">
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                        <h3 class="text-2xl font-bold">生成結果</h3>
+                        <button id="download-zip-btn" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 disabled:bg-gray-500 text-white font-semibold py-2 px-6 rounded-lg flex items-center justify-center">
+                            <i data-lucide="package-check" class="w-5 h-5 mr-2"></i>
+                            打包下載
+                        </button>
+                    </div>
+                    <div class="w-full bg-gray-600 rounded-full h-4 mb-2">
+                        <div id="progress-bar" class="bg-blue-600 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <p id="progress-text" class="text-center text-gray-400 text-sm mb-6">準備開始...</p>
+
+                    <div id="stickers-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <!-- 貼圖卡片將由 JS 動態生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 相機 Modal -->
+    <div id="camera-modal" class="modal-overlay fixed inset-0 z-50 hidden items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl p-6 w-full max-w-2xl text-center">
+               <h3 class="text-xl font-bold mb-4">相機預覽</h3>
+            <video id="camera-video" class="w-full rounded-lg" autoplay playsinline></video>
+            <div class="mt-6 flex justify-center gap-4">
+                <button id="capture-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full">
+                    <i data-lucide="aperture" class="w-6 h-6"></i>
+                </button>
+                <button id="close-camera-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-8 rounded-full">
+                       <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 訊息提示 Modal -->
+    <div id="message-modal" class="modal-overlay fixed inset-0 z-50 hidden items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-sm text-center shadow-lg">
+            <h3 id="message-title" class="text-xl font-bold mb-3 text-white"></h3>
+            <p id="message-body" class="text-gray-300 mb-6"></p>
+            <button id="message-ok-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full">確定</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- 設定 ---
+        const EMOTIONS = {
+            '開心': { icon: 'smile', text: 'YAY!' }, '大笑': { icon: 'laugh', text: 'LOL' }, '傷心': { icon: 'frown', text: 'SAD' },
+            '哭泣': { icon: 'unplug', text: 'CRYING' }, '生氣': { icon: 'angry', text: 'GRRR' }, '驚訝': { icon: 'circle-dot', text: 'WOW!' },
+            '愛心': { icon: 'heart', text: 'LOVE' }, '耍帥': { icon: 'glasses', text: 'COOL' }, '無奈': { icon: 'meh', text: 'MEH' },
+            '思考': { icon: 'brain-circuit', text: 'HMMM' }, 'OK': { icon: 'thumbs-up', text: 'OK' }, '拜託': { icon: 'sparkles', text: 'PLEASE' },
+        };
+        const STYLES = {
+            '卡通風格': { preview: 'https://placehold.co/150x150/3b82f6/ffffff?text=Cartoon', prompt: 'Create a high-quality, cartoon-style chat sticker of the person in the image.' },
+            '真實人物': { preview: 'https://placehold.co/150x150/16a34a/ffffff?text=Realistic', prompt: 'Create a photorealistic, expressive chat sticker of the person in the image. Enhance the lighting and details to make it look like a professional portrait.' },
+            '日式動漫': { preview: 'https://placehold.co/150x150/db2777/ffffff?text=Anime', prompt: 'Transform the person in the image into a Japanese anime (アニメ) style character for a chat sticker. It should have typical anime features like large expressive eyes and stylized hair.' },
+            '像素藝術': { preview: 'https://placehold.co/150x150/7c3aed/ffffff?text=Pixel', prompt: 'Create a pixel art style chat sticker of the person in the image. The style should be reminiscent of 16-bit retro video games.' },
+            '黏土模型': { preview: 'https://placehold.co/150x150/d97706/ffffff?text=Clay', prompt: 'Recreate the person in the image as a claymation (stop-motion clay animation) style chat sticker. The texture should look like real modeling clay.' }
+        };
+
+        // --- 狀態管理 ---
+        let uploadedImageBase64 = null;
+        let selectedEmotions = Object.keys(EMOTIONS);
+        let selectedStyle = '卡通風格';
+        let addText = false;
+        let isGenerating = false;
+        let stickers = [];
+
+        // --- DOM 元素 (部分) ---
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const cameraButton = document.getElementById('camera-button');
+        const uploadContainer = document.getElementById('upload-container');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const imagePreview = document.getElementById('image-preview');
+        const clearImageBtn = document.getElementById('clear-image-btn');
+        const stylesGrid = document.getElementById('styles-grid');
+        const emotionsGrid = document.getElementById('emotions-grid');
+        const generateBtn = document.getElementById('generate-btn');
+        const resultsSection = document.getElementById('results-section');
+        const stickersGrid = document.getElementById('stickers-grid');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const downloadZipBtn = document.getElementById('download-zip-btn');
+        const addTextToggle = document.getElementById('add-text-toggle');
+        const cameraModal = document.getElementById('camera-modal');
+        const cameraVideo = document.getElementById('camera-video');
+        const captureBtn = document.getElementById('capture-btn');
+        const closeCameraBtn = document.getElementById('close-camera-btn');
+        const messageModal = document.getElementById('message-modal');
+        const messageTitle = document.getElementById('message-title');
+        const messageBody = document.getElementById('message-body');
+        const messageOkBtn = document.getElementById('message-ok-btn');
+        let cameraStream = null;
+
+        // --- 初始化 ---
+        function initialize() {
+            lucide.createIcons();
+            setupEventListeners();
+            renderStyleSelectors();
+            renderEmotionCheckboxes();
+            updateGenerateButtonState();
+        }
+
+        // --- 事件監聽器設定 ---
+        function setupEventListeners() {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, preventDefaults, false));
+            ['dragenter', 'dragover'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false));
+            ['dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false));
+            dropZone.addEventListener('drop', handleDrop, false);
+            fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+            cameraButton.addEventListener('click', openCamera);
+            captureBtn.addEventListener('click', captureImage);
+            closeCameraBtn.addEventListener('click', closeCamera);
+            clearImageBtn.addEventListener('click', clearImage);
+            
+            document.getElementById('select-all-btn').addEventListener('click', () => toggleAllEmotions(true));
+            document.getElementById('deselect-all-btn').addEventListener('click', () => toggleAllEmotions(false));
+            addTextToggle.addEventListener('change', (e) => { addText = e.target.checked; });
+
+            generateBtn.addEventListener('click', handleGenerateClick);
+            downloadZipBtn.addEventListener('click', handleDownloadZip);
+            messageOkBtn.addEventListener('click', () => messageModal.classList.add('hidden'));
+        }
+        
+        // --- 核心功能函式 ---
+        function handleFiles(files) {
+            const file = files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    uploadedImageBase64 = reader.result.split(',')[1];
+                    imagePreview.src = reader.result;
+                    uploadContainer.classList.add('hidden');
+                    imagePreviewContainer.classList.remove('hidden');
+                    updateGenerateButtonState();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function handleDrop(e) { handleFiles(e.dataTransfer.files); }
+
+        function clearImage() {
+            uploadedImageBase64 = null;
+            imagePreview.src = "";
+            uploadContainer.classList.remove('hidden');
+            imagePreviewContainer.classList.add('hidden');
+            updateGenerateButtonState();
+        }
+
+        async function openCamera() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                cameraVideo.srcObject = cameraStream;
+                cameraModal.classList.remove('hidden'); cameraModal.classList.add('flex');
+            } catch (err) {
+                console.error("無法開啟相機: ", err); 
+                showMessage('錯誤', '無法開啟相機，請確認您已授權並未被其他應用程式佔用。');
+            }
+        }
+
+        function closeCamera() {
+            if (cameraStream) { cameraStream.getTracks().forEach(track => track.stop()); }
+            cameraModal.classList.add('hidden'); cameraModal.classList.remove('flex'); cameraStream = null;
+        }
+
+        function captureImage() {
+            const canvas = document.createElement('canvas');
+            canvas.width = cameraVideo.videoWidth; canvas.height = cameraVideo.videoHeight;
+            canvas.getContext('2d').drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg');
+            uploadedImageBase64 = dataUrl.split(',')[1];
+            imagePreview.src = dataUrl;
+            uploadContainer.classList.add('hidden'); imagePreviewContainer.classList.remove('hidden');
+            updateGenerateButtonState(); closeCamera();
+        }
+
+        function updateSelectedEmotions() {
+            selectedEmotions = Array.from(document.querySelectorAll('.emotion-checkbox:checked')).map(el => el.value);
+            updateGenerateButtonState();
+        }
+
+        function toggleAllEmotions(select) {
+            document.querySelectorAll('.emotion-checkbox').forEach(checkbox => { checkbox.checked = select; });
+            updateSelectedEmotions();
+        }
+        
+        function updateSelectedStyle(style) { selectedStyle = style; }
+
+        async function handleGenerateClick() {
+            if (isGenerating || !uploadedImageBase64 || selectedEmotions.length === 0) return;
+            isGenerating = true;
+            updateUIForGenerationStart();
+            stickers = selectedEmotions.map(emotion => ({
+                emotion, status: 'pending', imageUrl: null,
+                prompt: createPrompt(emotion, selectedStyle)
+            }));
+            renderStickersGrid();
+            await Promise.allSettled(stickers.map((sticker, index) => generateSticker(sticker, index)));
+            isGenerating = false;
+            updateUIForGenerationEnd();
+        }
+
+        async function generateSticker(sticker, index) {
+            updateStickerStatus(index, 'loading');
+            const payload = {
+                contents: [{ parts: [{ text: sticker.prompt }, { inlineData: { mimeType: 'image/jpeg', data: uploadedImageBase64 } }] }],
+                generationConfig: { responseModalities: ['IMAGE'] },
+            };
+            try {
+                const base64Data = await callApiWithRetry(payload);
+                if (base64Data) {
+                    updateStickerStatus(index, 'success', `data:image/png;base64,${base64Data}`);
+                } else { throw new Error('API returned no image data.'); }
+            } catch (error) {
+                console.error(`Error generating sticker for ${sticker.emotion}:`, error);
+                updateStickerStatus(index, 'error');
+            }
+            updateProgress();
+        }
+
+        async function callApiWithRetry(payload, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const apiKey = ""; const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) { throw new Error(`HTTP error! status: ${response.status}`); }
+                    const result = await response.json();
+                    const base64Data = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+                    if (base64Data) return base64Data;
+                    else throw new Error('Invalid API response structure.');
+                } catch (error) {
+                    console.warn(`Attempt ${i + 1} failed. Retrying in ${delay / 1000}s...`, error);
+                    if (i < retries - 1) { await new Promise(res => setTimeout(res, delay)); delay *= 2; } 
+                    else { throw error; }
+                }
+            }
+        }
+        
+        async function handleRegenerateClick(index) {
+            if (isGenerating) return;
+            isGenerating = true; generateBtn.disabled = true;
+            await generateSticker(stickers[index], index);
+            isGenerating = false; updateGenerateButtonState();
+        }
+
+        function handleDownloadSingle(imageUrl, emotion) {
+            const link = document.createElement('a');
+            link.href = imageUrl;
+            link.download = `${emotion}_${selectedStyle}_sticker.png`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        async function handleDownloadZip() {
+            const zip = new JSZip();
+            const successfulStickers = stickers.filter(s => s.status === 'success');
+            if (successfulStickers.length === 0) { showMessage('沒有貼圖', '沒有可以打包下載的貼圖。'); return; }
+            for (const sticker of successfulStickers) {
+                const blob = await (await fetch(sticker.imageUrl)).blob();
+                zip.file(`${sticker.emotion}_${selectedStyle}_sticker.png`, blob);
+            }
+            const content = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `OneClickStickers_${selectedStyle}.zip`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+        
+        function showMessage(title, message) {
+            messageTitle.textContent = title;
+            messageBody.textContent = message;
+            messageModal.classList.remove('hidden');
+            messageModal.classList.add('flex');
+        }
+
+        // --- UI 更新與渲染 ---
+        function renderStyleSelectors() {
+            stylesGrid.innerHTML = Object.entries(STYLES).map(([name, { preview }], index) => `
+                <div>
+                    <input type="radio" id="style-${name}" name="style" value="${name}" class="option-radio hidden" ${index === 0 ? 'checked' : ''}>
+                    <label for="style-${name}" class="cursor-pointer block bg-gray-700 rounded-lg overflow-hidden border-2 border-transparent transition-all hover:border-blue-500">
+                        <img src="${preview}" alt="${name}" class="w-full h-24 object-cover">
+                        <p class="text-center text-sm font-semibold p-2">${name}</p>
+                    </label>
+                </div>
+            `).join('');
+            stylesGrid.querySelectorAll('.option-radio').forEach(radio => radio.addEventListener('change', (e) => updateSelectedStyle(e.target.value)));
+        }
+
+        function renderEmotionCheckboxes() {
+            emotionsGrid.innerHTML = Object.entries(EMOTIONS).map(([name, { icon }]) => `
+                <div>
+                    <input type="checkbox" id="emotion-${name}" value="${name}" class="emotion-checkbox hidden peer" checked>
+                    <label for="emotion-${name}" class="flex items-center justify-center w-full p-3 border border-gray-600 rounded-lg cursor-pointer transition-colors text-gray-400 hover:bg-gray-700 hover:text-white">
+                        <i data-lucide="${icon}" class="w-5 h-5 mr-2"></i>
+                        <span class="text-sm font-medium">${name}</span>
+                    </label>
+                </div>
+            `).join('');
+            lucide.createIcons();
+            emotionsGrid.querySelectorAll('.emotion-checkbox').forEach(checkbox => checkbox.addEventListener('change', updateSelectedEmotions));
+        }
+        
+        function renderStickersGrid() {
+            stickersGrid.innerHTML = stickers.map((sticker, index) => createStickerCardHTML(sticker, index)).join('');
+            lucide.createIcons();
+            stickersGrid.querySelectorAll('[data-action="regenerate"]').forEach(btn => btn.addEventListener('click', (e) => handleRegenerateClick(e.target.closest('[data-index]').dataset.index)));
+            stickersGrid.querySelectorAll('[data-action="download"]').forEach(btn => btn.addEventListener('click', (e) => handleDownloadSingle(stickers[e.target.closest('[data-index]').dataset.index].imageUrl, stickers[e.target.closest('[data-index]').dataset.index].emotion)));
+        }
+
+        function createStickerCardHTML(sticker, index) {
+            const { emotion, status, imageUrl } = sticker;
+            let content = '';
+            switch (status) {
+                case 'loading': case 'pending':
+                    content = `<div class="w-full h-full skeleton bg-gray-500 flex items-center justify-center"><div class="w-8 h-8 border-4 border-t-transparent border-white rounded-full animate-spin"></div></div>`;
+                    break;
+                case 'success':
+                    content = `<img src="${imageUrl}" alt="${emotion} sticker" class="w-full h-full object-cover">
+                               <div class="absolute inset-0 bg-black bg-opacity-60 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    <button data-action="download" data-index="${index}" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full"><i data-lucide="download" class="w-5 h-5"></i></button>
+                                    <button data-action="regenerate" data-index="${index}" class="bg-gray-600 hover:bg-gray-500 text-white p-3 rounded-full"><i data-lucide="refresh-cw" class="w-5 h-5"></i></button>
+                               </div>`;
+                    break;
+                case 'error':
+                    content = `<div class="w-full h-full bg-red-900 bg-opacity-50 flex flex-col items-center justify-center text-center p-2">
+                                   <i data-lucide="alert-triangle" class="w-8 h-8 text-red-400 mb-2"></i>
+                                   <p class="text-sm font-semibold text-white">生成失敗</p>
+                                   <button data-action="regenerate" data-index="${index}" class="mt-3 bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1 rounded-full">重試</button>
+                               </div>`;
+                    break;
+            }
+            return `<div data-index="${index}" class="sticker-card relative flex flex-col items-center justify-center">
+                        <div class="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full">${emotion}</div>
+                        ${content}
+                    </div>`;
+        }
+
+        function updateStickerStatus(index, status, imageUrl = null) {
+            if (!stickers[index]) return;
+            stickers[index].status = status;
+            if (imageUrl) stickers[index].imageUrl = imageUrl;
+            
+            const newCardHTML = createStickerCardHTML(stickers[index], index);
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = newCardHTML;
+            const newCard = tempDiv.firstElementChild;
+            const oldCard = stickersGrid.children[index];
+            if (oldCard) {
+                stickersGrid.replaceChild(newCard, oldCard);
+                lucide.createIcons({ nodes: [newCard] });
+                newCard.querySelectorAll('[data-action="regenerate"]').forEach(btn => btn.addEventListener('click', (e) => handleRegenerateClick(e.target.closest('[data-index]').dataset.index)));
+                newCard.querySelectorAll('[data-action="download"]').forEach(btn => btn.addEventListener('click', (e) => handleDownloadSingle(stickers[e.target.closest('[data-index]').dataset.index].imageUrl, stickers[e.target.closest('[data-index]').dataset.index].emotion)));
+            }
+        }
+
+        function updateProgress() {
+            const completedCount = stickers.filter(s => s.status === 'success' || s.status === 'error').length;
+            const totalCount = stickers.length;
+            const percentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `進度: ${completedCount} / ${totalCount}`;
+            if (completedCount === totalCount) {
+                const successCount = stickers.filter(s => s.status === 'success').length;
+                progressText.textContent = `全部完成！成功 ${successCount} 張，失敗 ${totalCount - successCount} 張。`;
+                downloadZipBtn.disabled = successCount === 0;
+            }
+        }
+        
+        function updateGenerateButtonState() { generateBtn.disabled = !uploadedImageBase64 || selectedEmotions.length === 0 || isGenerating; }
+        
+        function updateUIForGenerationStart() {
+            generateBtn.disabled = true; generateBtn.querySelector('#btn-text').classList.add('hidden');
+            generateBtn.querySelector('#btn-loader').classList.remove('hidden'); resultsSection.classList.remove('hidden');
+            progressBar.style.width = '0%'; progressText.textContent = `準備生成 ${selectedEmotions.length} 張貼圖...`;
+            downloadZipBtn.disabled = true;
+        }
+
+        function updateUIForGenerationEnd() {
+            generateBtn.disabled = false; 
+            generateBtn.querySelector('#btn-text').classList.remove('hidden');
+            generateBtn.querySelector('#btn-loader').classList.add('hidden'); 
+            updateGenerateButtonState();
+        }
+
+        // --- 輔助函式 ---
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+        
+        function createPrompt(emotion, style) {
+            const basePrompt = STYLES[style]?.prompt || STYLES['卡通風格'].prompt;
+            const textPart = addText ? `Add the text "${EMOTIONS[emotion].text}" in a fun, bold, comic-style font.` : 'No text.';
+            
+            const commonInstructions = `
+                The sticker must express an exaggerated emotion of "${emotion}".
+                Crucially, retain the key facial features of the person.
+                The final sticker MUST be a perfect 1024x1024 square.
+                The sticker MUST have a thick white outline and a subtle drop shadow to make it pop.
+                The sticker MUST be on a solid, clean, black square background.
+                ${textPart}
+                Make it vibrant and expressive.`;
+            return `${basePrompt}\n${commonInstructions}`;
+        }
+
+        // --- 啟動應用 ---
+        initialize();
+    </script>
+</body>
+</html>
